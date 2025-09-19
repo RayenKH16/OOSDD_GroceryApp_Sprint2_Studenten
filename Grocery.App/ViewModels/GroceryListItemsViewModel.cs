@@ -28,16 +28,28 @@ namespace Grocery.App.ViewModels
         private void Load(int id)
         {
             MyGroceryListItems.Clear();
-            foreach (var item in _groceryListItemsService.GetAllOnGroceryListId(id)) MyGroceryListItems.Add(item);
+            foreach (var item in _groceryListItemsService.GetAllOnGroceryListId(id))
+                MyGroceryListItems.Add(item);
+
             GetAvailableProducts();
         }
 
         private void GetAvailableProducts()
         {
-            //Maak de lijst AvailableProducts leeg
-            //Haal de lijst met producten op
-            //Controleer of het product al op de boodschappenlijst staat, zo niet zet het in de AvailableProducts lijst
-            //Houdt rekening met de voorraad (als die nul is kun je het niet meer aanbieden).            
+            AvailableProducts.Clear();
+
+            // Haal alle producten op
+            var allProducts = _productService.GetAll();
+
+            // Filter: product moet voorraad hebben (>0) en mag niet al op de boodschappenlijst staan
+            foreach (var product in allProducts)
+            {
+                bool alreadyOnList = MyGroceryListItems.Any(item => item.ProductId == product.Id);
+                if (product.Stock > 0 && !alreadyOnList)
+                {
+                    AvailableProducts.Add(product);
+                }
+            }
         }
 
         partial void OnGroceryListChanged(GroceryList value)
@@ -51,15 +63,29 @@ namespace Grocery.App.ViewModels
             Dictionary<string, object> paramater = new() { { nameof(GroceryList), GroceryList } };
             await Shell.Current.GoToAsync($"{nameof(ChangeColorView)}?Name={GroceryList.Name}", true, paramater);
         }
+
         [RelayCommand]
         public void AddProduct(Product product)
         {
-            //Controleer of het product bestaat en dat de Id > 0
-            //Maak een GroceryListItem met Id 0 en vul de juiste productid en grocerylistid
-            //Voeg het GroceryListItem toe aan de dataset middels de _groceryListItemsService
-            //Werk de voorraad (Stock) van het product bij en zorg dat deze wordt vastgelegd (middels _productService)
-            //Werk de lijst AvailableProducts bij, want dit product is niet meer beschikbaar
-            //call OnGroceryListChanged(GroceryList);
+            if (product == null || product.Id <= 0) return;
+
+            // Maak een nieuw GroceryListItem
+            var newItem = new GroceryListItem(
+                id: 0,
+                groceryListId: GroceryList.Id,
+                productId: product.Id,
+                amount: 1 // standaard hoeveelheid
+            );
+
+            // Voeg het item toe via de service
+            _groceryListItemsService.Add(newItem);
+
+            // Verminder de voorraad van het product en sla op
+            product.Stock -= 1;
+            _productService.Update(product);
+
+            // Werk de viewmodels bij
+            OnGroceryListChanged(GroceryList);
         }
     }
 }
